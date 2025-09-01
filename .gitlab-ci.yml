@@ -1,0 +1,58 @@
+workflow:
+  name: eMPro_CommonApp Pipeline
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "development"'
+
+stages:
+  - build
+  - deploy
+
+variables:
+  TARGET_REPO: https://gitlab.com/motherson-mtsl/apps/empro/emproweb/emproone/webapp/empro_shared/ui_libaray.git
+  DIST_DIR: dist/e-mpro-common  # Adjust if your actual build output folder differs
+
+dev-build-job:
+  stage: build
+  tags:
+    - LinuxVM
+  script:
+    - echo "Installing Dependencies..."
+    - rm -rf node_modules package-lock.json
+    - npm install --f
+    - cd projects/e-mpro-common
+    - npm ci --force
+    - echo "Compiling Angular project..."
+    - ng build
+  artifacts:
+    paths:
+      - $DIST_DIR
+  only:
+    - development
+
+upload-to-shared-repo:
+  stage: deploy
+  tags:
+    - LinuxVM
+  dependencies:
+    - dev-build-job
+  before_script:
+    #- apk add --no-cache git
+    - git config --global user.email "omveer.chaudhary@motherson.com"
+    - git config --global user.name "Omveer Singh Chaudhary"
+  script:
+    - echo "Cloning target shared UI library repo..."
+    - git clone --branch FeatureBranch https://oauth2:${GITLAB_TOKEN}@gitlab.com/motherson-mtsl/apps/empro/emproweb/emproone/webapp/empro_shared/ui_libaray.git target_repo
+    - cd target_repo
+
+    - echo "Cleaning existing files..."
+    - rm -rf *
+
+    - echo "Copying dist files..."
+    - cp -r ../$DIST_DIR/* .
+
+    - |
+      git add .
+      git commit -m "CI: Deploy Angular build from $CI_PROJECT_PATH@$CI_COMMIT_SHORT_SHA" || echo "No changes to commit"
+    - git push origin FeatureBranch
+  only:
+    - development
